@@ -1,2 +1,6 @@
-opencv-python
-requests
+clip
+numpy
+Requests
+scipy
+torch
+torchvision

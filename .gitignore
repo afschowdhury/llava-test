@@ -1,9 +1,5 @@
-# Large video files
-video/demo_video.mp4
-video/*.mp4
-video/*.avi
-video/*.mov
-video/*.mkv
+# Large video files are now handled by Git LFS
+# (video files are tracked in .gitattributes)
 
 # Python cache
 __pycache__/

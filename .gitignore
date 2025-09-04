@@ -1,0 +1,32 @@
+# Large video files
+video/demo_video.mp4
+video/*.mp4
+video/*.avi
+video/*.mov
+video/*.mkv
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Model files and large data
+*.pkl
+*.h5
+*.model
+*.bin

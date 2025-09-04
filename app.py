@@ -69,7 +69,7 @@ def get_ai_description(frame_base64):
             OLLAMA_API_URL,
             json={
                 "model": MODEL_NAME,
-                "prompt": "This is a first person view of a person working on a construction site. Describe the scene in this image in brief. Focus on what is in front of the person and a short description of the environment.",
+                "prompt": "This is a first person view of a person working on a construction site. Describe the scene in this image in brief. Focus on what is in front of the person and a short description of the environment.s",
                 "stream": False,
                 "images": [frame_base64],
             },

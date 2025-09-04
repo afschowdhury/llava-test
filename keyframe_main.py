@@ -9,7 +9,7 @@ extractor = VideoKeyframeExtractor(
 
 # Extract keyframes
 keyframes = extractor.extract_keyframes_from_video(
-    video_path="your_video.mp4",
+    video_path="video/demo_video.mp4",
     output_dir="keyframes_output",  # Saves keyframe images here
 )
 

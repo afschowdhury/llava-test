@@ -1,0 +1,19 @@
+# Video Scene Analyzer Requirements
+# Install with: pip install -r requirements_video_analyzer.txt
+
+# Core dependencies
+opencv-python>=4.5.0
+numpy>=1.21.0
+requests>=2.25.0
+Pillow>=8.0.0
+
+# GUI framework (usually included with Python)
+# tkinter - included with Python standard library
+
+# Optional: For better video codec support
+# opencv-contrib-python>=4.5.0  # Uncomment if you need additional codecs
+
+# Note: Make sure Ollama is running with LLaVA model:
+# 1. Install Ollama: https://ollama.ai/
+# 2. Pull LLaVA model: ollama pull llava:7b
+# 3. Start Ollama server: ollama serve

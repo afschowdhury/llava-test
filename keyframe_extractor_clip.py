@@ -1,13 +1,14 @@
-import numpy as np
-import cv2
-from typing import List, Tuple, Dict, Optional, Set
-from dataclasses import dataclass
-from scipy.spatial.distance import cosine
-import torch
-import clip
-from collections import defaultdict
 import os
+from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple
+
+import clip
+import cv2
+import numpy as np
+import torch
+from scipy.spatial.distance import cosine
 
 
 @dataclass
@@ -43,8 +44,9 @@ class VideoKeyframeExtractor:
         motion_threshold: float = 0.3,
         frame_diff_threshold: float = 0.4,
         scene_change_threshold: float = 0.5,
-        skip_frames: int = 1,
-    ):  # Process every nth frame for efficiency
+        skip_frames: int = 1,  # Process every nth frame for efficiency
+        target_fps: Optional[float] = None,  # Target FPS for processing
+    ):
         """
         Initialize the video keyframe extractor.
 
@@ -56,6 +58,7 @@ class VideoKeyframeExtractor:
             frame_diff_threshold: Threshold for frame difference-based scene changes
             scene_change_threshold: Threshold for feature-based scene change detection
             skip_frames: Process every nth frame (1 = every frame, 2 = every other frame, etc.)
+            target_fps: Target FPS for processing (None = use original video FPS)
         """
         self.n = n
         self.m = m
@@ -64,6 +67,7 @@ class VideoKeyframeExtractor:
         self.frame_diff_threshold = frame_diff_threshold
         self.scene_change_threshold = scene_change_threshold
         self.skip_frames = skip_frames
+        self.target_fps = target_fps
 
         # Initialize CLIP for feature extraction
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -274,6 +278,25 @@ class VideoKeyframeExtractor:
 
         return False, "no_significant_change"
 
+    def _get_change_type(self, reason: str) -> str:
+        """Extract the change type from the reason string for organizing outputs"""
+        if reason.startswith("scene_change"):
+            return "scene_change"
+        elif reason.startswith("object_composition_change"):
+            return "object_composition_change"
+        elif reason.startswith("optical_flow_motion"):
+            return "optical_flow_motion"
+        elif reason.startswith("frame_difference"):
+            return "frame_difference"
+        elif reason.startswith("vgg_similarity"):
+            return "vgg_similarity"
+        elif reason == "first_frame":
+            return "first_frame"
+        elif reason == "first_vgg_features":
+            return "first_vgg_features"
+        else:
+            return "other"
+
     def extract_keyframes_from_video(
         self, video_path: str, output_dir: Optional[str] = None
     ) -> List[KeyframeResult]:
@@ -296,11 +319,24 @@ class VideoKeyframeExtractor:
             raise ValueError(f"Could not open video file: {video_path}")
 
         # Get video properties
-        fps = cap.get(cv2.CAP_PROP_FPS)
+        original_fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
+        # Use target FPS if specified, otherwise use original FPS
+        fps = self.target_fps if self.target_fps is not None else original_fps
+
+        # Calculate frame skip based on target FPS
+        if self.target_fps is not None and self.target_fps < original_fps:
+            fps_skip = int(original_fps / self.target_fps)
+        else:
+            fps_skip = 1
+
         print(f"Processing video: {video_path}")
-        print(f"FPS: {fps}, Total frames: {total_frames}")
+        print(
+            f"Original FPS: {original_fps}, Target FPS: {fps}, Total frames: {total_frames}"
+        )
+        if self.target_fps is not None:
+            print(f"Frame skip for target FPS: {fps_skip}")
 
         # Initialize tracking variables
         keyframes = []
@@ -310,9 +346,24 @@ class VideoKeyframeExtractor:
         prev_objects = []
         prev_keyframe_features = None
 
-        # Create output directory if specified
+        # Create output directories if specified
+        change_type_dirs = {}
         if output_dir:
             Path(output_dir).mkdir(parents=True, exist_ok=True)
+            # Create subdirectories for different change types
+            change_types = [
+                "scene_change",
+                "object_composition_change",
+                "optical_flow_motion",
+                "frame_difference",
+                "vgg_similarity",
+                "first_frame",
+                "first_vgg_features",
+            ]
+            for change_type in change_types:
+                change_dir = os.path.join(output_dir, change_type)
+                Path(change_dir).mkdir(parents=True, exist_ok=True)
+                change_type_dirs[change_type] = change_dir
 
         try:
             while True:
@@ -320,8 +371,8 @@ class VideoKeyframeExtractor:
                 if not ret:
                     break
 
-                # Skip frames if specified
-                if frame_idx % self.skip_frames != 0:
+                # Skip frames based on both skip_frames and FPS requirements
+                if frame_idx % self.skip_frames != 0 or frame_idx % fps_skip != 0:
                     frame_idx += 1
                     continue
 
@@ -369,10 +420,22 @@ class VideoKeyframeExtractor:
 
                     # Save keyframe image if output directory specified
                     if output_dir:
+                        # Determine the change type for organizing files
+                        change_type = self._get_change_type(reason)
+
                         filename = (
                             f"keyframe_{frame_idx:06d}_{timestamp:.2f}s_{reason}.jpg"
                         )
-                        filepath = os.path.join(output_dir, filename)
+
+                        # Save to appropriate subdirectory
+                        if change_type in change_type_dirs:
+                            filepath = os.path.join(
+                                change_type_dirs[change_type], filename
+                            )
+                        else:
+                            # Fallback to main directory for unknown change types
+                            filepath = os.path.join(output_dir, filename)
+
                         cv2.imwrite(filepath, frame)
 
                     print(
@@ -394,7 +457,67 @@ class VideoKeyframeExtractor:
             cap.release()
 
         print(f"Extraction complete. Found {len(keyframes)} keyframes.")
+
+        # Display summary of keyframes in each output folder
+        if output_dir and os.path.exists(output_dir):
+            self._display_output_summary(output_dir)
+
         return keyframes
+
+    def _display_output_summary(self, output_dir: str):
+        """Display summary of keyframes in each output folder"""
+        print("\n" + "=" * 60)
+        print("OUTPUT FOLDER SUMMARY")
+        print("=" * 60)
+
+        total_keyframes = 0
+
+        # Get all subdirectories (change types)
+        subdirs = [
+            d
+            for d in os.listdir(output_dir)
+            if os.path.isdir(os.path.join(output_dir, d))
+        ]
+
+        if not subdirs:
+            print("No subdirectories found in output folder.")
+            return
+
+        # Sort subdirectories for consistent display
+        subdirs.sort()
+
+        print(f"{'Change Type':<25} {'Keyframes':<10} {'Percentage':<10}")
+        print("-" * 50)
+
+        for subdir in subdirs:
+            subdir_path = os.path.join(output_dir, subdir)
+            # Count JPG files in the subdirectory
+            jpg_files = [
+                f for f in os.listdir(subdir_path) if f.lower().endswith(".jpg")
+            ]
+            count = len(jpg_files)
+            total_keyframes += count
+
+            # Calculate percentage (will be calculated after we know total)
+            print(f"{subdir:<25} {count:<10}")
+
+        print("-" * 50)
+        print(f"{'TOTAL':<25} {total_keyframes:<10}")
+
+        # Display percentages
+        if total_keyframes > 0:
+            print("\nPercentage Distribution:")
+            print("-" * 30)
+            for subdir in subdirs:
+                subdir_path = os.path.join(output_dir, subdir)
+                jpg_files = [
+                    f for f in os.listdir(subdir_path) if f.lower().endswith(".jpg")
+                ]
+                count = len(jpg_files)
+                percentage = (count / total_keyframes) * 100
+                print(f"{subdir:<25} {percentage:>6.1f}%")
+
+        print("=" * 60)
 
     def reset(self):
         """Reset the extractor state"""
@@ -402,8 +525,81 @@ class VideoKeyframeExtractor:
             self.object_detector = self._init_simple_detector()
 
 
-def main():
-    """Example usage of the VideoKeyframeExtractor with CLIP"""
+def analyze_output_folder(output_dir: str):
+    """
+    Analyze and display summary of keyframes in an existing output folder.
+
+    Args:
+        output_dir: Path to the output directory containing keyframe subdirectories
+    """
+    if not os.path.exists(output_dir):
+        print(f"Error: Output directory '{output_dir}' does not exist.")
+        return
+
+    print(f"Analyzing output folder: {output_dir}")
+
+    total_keyframes = 0
+
+    # Get all subdirectories (change types)
+    subdirs = [
+        d for d in os.listdir(output_dir) if os.path.isdir(os.path.join(output_dir, d))
+    ]
+
+    if not subdirs:
+        print("No subdirectories found in output folder.")
+        return
+
+    # Sort subdirectories for consistent display
+    subdirs.sort()
+
+    print("\n" + "=" * 60)
+    print("OUTPUT FOLDER ANALYSIS")
+    print("=" * 60)
+    print(f"{'Change Type':<25} {'Keyframes':<10}")
+    print("-" * 40)
+
+    for subdir in subdirs:
+        subdir_path = os.path.join(output_dir, subdir)
+        # Count JPG files in the subdirectory
+        jpg_files = [f for f in os.listdir(subdir_path) if f.lower().endswith(".jpg")]
+        count = len(jpg_files)
+        total_keyframes += count
+
+        print(f"{subdir:<25} {count:<10}")
+
+    print("-" * 40)
+    print(f"{'TOTAL':<25} {total_keyframes:<10}")
+
+    # Display percentages
+    if total_keyframes > 0:
+        print("\nPercentage Distribution:")
+        print("-" * 30)
+        for subdir in subdirs:
+            subdir_path = os.path.join(output_dir, subdir)
+            jpg_files = [
+                f for f in os.listdir(subdir_path) if f.lower().endswith(".jpg")
+            ]
+            count = len(jpg_files)
+            percentage = (count / total_keyframes) * 100
+            print(f"{subdir:<25} {percentage:>6.1f}%")
+
+    print("=" * 60)
+
+
+def main(
+    video_path: str = None,
+    output_dir: str = None,
+    target_fps: float = None,
+    scene_change_threshold: float = 0.5,
+):
+    """
+    Example usage of the VideoKeyframeExtractor with CLIP
+
+    Args:
+        video_path: Path to the video file to process
+        output_dir: Directory to save keyframe images (organized by change type)
+        target_fps: Target FPS for processing (None = use original video FPS)
+    """
 
     print("VideoKeyframeExtractor with CLIP")
     print("=" * 50)
@@ -411,18 +607,27 @@ def main():
     print("              pip install torch torchvision")
     print("              pip install opencv-python scipy")
     print("=" * 50)
+    print("Features:")
+    print("- Configurable FPS processing")
+    print(
+        "- Organized output by change type (scene_change, object_composition_change, etc.)"
+    )
+    print("=" * 50)
 
     # Initialize extractor
     extractor = VideoKeyframeExtractor(
         motion_threshold=0.2,  # Adjust based on your video content
         frame_diff_threshold=0.3,  # Adjust based on your video content
-        scene_change_threshold=0.4,  # Adjust based on your video content
+        scene_change_threshold=scene_change_threshold,  # Adjust based on your video content
         skip_frames=2,  # Process every 2nd frame for efficiency
+        target_fps=target_fps,  # Target FPS for processing
     )
 
     # Example video processing
-    video_path = "your_video.mp4"  # Replace with your video path
-    output_dir = "keyframes_output"  # Directory to save keyframe images
+    if video_path is None:
+        video_path = "video/demo_video.mp4"  # Replace with your video path
+    if output_dir is None:
+        output_dir = "keyframes_output"  # Directory to save keyframe images
 
     try:
         keyframes = extractor.extract_keyframes_from_video(video_path, output_dir)
@@ -440,18 +645,18 @@ def main():
         # Analyze keyframe distribution
         if keyframes:
             times = [kf.timestamp for kf in keyframes]
-            print(f"\nKeyframe timing analysis:")
+            print("\nKeyframe timing analysis:")
             print(f"First keyframe: {min(times):.2f}s")
             print(f"Last keyframe: {max(times):.2f}s")
             print(
                 f"Average interval: {(max(times) - min(times)) / max(1, len(times)-1):.2f}s"
             )
 
-        print(f"\nUsing CLIP ViT-B/32 for semantic visual understanding")
-        print(f"CLIP provides better scene understanding compared to VGG16")
+        print("\nUsing CLIP ViT-B/32 for semantic visual understanding")
+        print("CLIP provides better scene understanding compared to VGG16")
 
     except FileNotFoundError:
-        print(f"Please update video_path to point to your video file")
+        print("Please update video_path to point to your video file")
         print("Example usage:")
         print("extractor = VideoKeyframeExtractor()")
         print(
@@ -483,7 +688,7 @@ def advanced_clip_analysis(
             "static scene",
         ]
 
-    print(f"\nAdvanced CLIP Analysis")
+    print("\nAdvanced CLIP Analysis")
     print("=" * 30)
 
     # Encode text queries
@@ -516,4 +721,6 @@ def advanced_clip_analysis(
 
 
 if __name__ == "__main__":
-    main()
+    main(target_fps=1, scene_change_threshold=0.8)
+    analyze_output_folder("keyframes_output")
+    

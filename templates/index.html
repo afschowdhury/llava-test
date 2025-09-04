@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Scene Analyzer</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-video"></i>
+                    <h1>Video Scene Analyzer</h1>
+                </div>
+                <div class="header-actions">
+                    <button id="selectVideoBtn" class="btn btn-primary">
+                        <i class="fas fa-folder-open"></i>
+                        Select Video
+                    </button>
+                    <div class="status-indicator" id="statusIndicator">
+                        <i class="fas fa-circle"></i>
+                        <span>Ready</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Video Section -->
+            <section class="video-section">
+                <div class="video-container">
+                    <div class="video-wrapper" id="videoWrapper">
+                        <div class="video-placeholder" id="videoPlaceholder">
+                            <i class="fas fa-play-circle"></i>
+                            <h3>Select a video to begin analysis</h3>
+                            <p>Choose a video file to start AI-powered scene analysis</p>
+                        </div>
+                        <video id="videoPlayer" controls style="display: none;">
+                            <source src="" type="video/mp4">
+                            Your browser does not support the video tag.
+                        </video>
+                        <canvas id="frameCanvas" style="display: none;"></canvas>
+                    </div>
+                    
+                    <!-- Video Controls -->
+                    <div class="video-controls" id="videoControls" style="display: none;">
+                        <div class="control-group">
+                            <button id="playPauseBtn" class="btn btn-icon">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            <button id="stopBtn" class="btn btn-icon">
+                                <i class="fas fa-stop"></i>
+                            </button>
+                            <div class="time-display">
+                                <span id="currentTime">00:00</span>
+                                <span>/</span>
+                                <span id="totalTime">00:00</span>
+                            </div>
+                        </div>
+                        
+                        <div class="progress-container">
+                            <input type="range" id="progressBar" min="0" max="100" value="0" class="progress-slider">
+                        </div>
+                        
+                        <div class="control-group">
+                            <button id="analyzeFrameBtn" class="btn btn-secondary">
+                                <i class="fas fa-brain"></i>
+                                Analyze Frame
+                            </button>
+                            <button id="startAnalysisBtn" class="btn btn-success">
+                                <i class="fas fa-play"></i>
+                                Start Analysis & Play
+                            </button>
+                            <button id="stopAnalysisBtn" class="btn btn-danger" style="display: none;">
+                                <i class="fas fa-stop"></i>
+                                Stop Analysis & Pause
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Analysis Section -->
+            <section class="analysis-section">
+                <div class="analysis-header">
+                    <h2>
+                        <i class="fas fa-robot"></i>
+                        AI Scene Analysis
+                    </h2>
+                    <div class="analysis-stats">
+                        <div class="stat">
+                            <span class="stat-label">Frames Analyzed</span>
+                            <span class="stat-value" id="framesAnalyzed">0</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Analysis Interval</span>
+                            <select id="analysisInterval" class="interval-select">
+                                <option value="1">1 second</option>
+                                <option value="2">2 seconds</option>
+                                <option value="3" selected>3 seconds</option>
+                                <option value="5">5 seconds</option>
+                                <option value="10">10 seconds</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="analysis-results" id="analysisResults">
+                    <div class="empty-state">
+                        <i class="fas fa-search"></i>
+                        <h3>No analysis yet</h3>
+                        <p>Start analyzing the video to see AI-generated scene descriptions</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Video Selection Modal -->
+        <div id="videoModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Select Video File</h2>
+                    <button class="modal-close" id="closeModal">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="video-list" id="videoList">
+                        <div class="loading">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            Loading videos...
+                        </div>
+                    </div>
+                    <div class="file-upload">
+                        <input type="file" id="fileInput" accept="video/*" style="display: none;">
+                        <button id="uploadBtn" class="btn btn-outline">
+                            <i class="fas fa-upload"></i>
+                            Upload New Video
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <h3>Analyzing Video</h3>
+            <p id="loadingText">Processing frames with AI...</p>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
